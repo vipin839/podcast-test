@@ -29,11 +29,28 @@ jobs:
         run: python feed.py
 
       - name: Create feed update pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: Update generated podcast feed
-          title: Update generated podcast feed
-          body: Automatically generated from feed.yaml by GitHub Actions.
-          branch: automated/feed-update
-          delete-branch: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet; then
+            echo "No feed changes detected."
+            exit 0
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git switch -c automated/feed-update
+          git add podcast.xml
+          git commit -m "Update generated podcast feed"
+          git push --force-with-lease origin automated/feed-update
+
+          existing_pr=$(gh pr list --base main --head automated/feed-update --state open --json number --jq '.[0].number')
+          if [ -z "$existing_pr" ]; then
+            gh pr create \
+              --base main \
+              --head automated/feed-update \
+              --title "Update generated podcast feed" \
+              --body "Automatically generated from feed.yaml by GitHub Actions."
+          else
+            echo "Pull request #$existing_pr already exists."
+          fi
